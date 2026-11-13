@@ -77,18 +77,23 @@ class WhisperEngine(
         }
     }
 
-    /** Greedy decode of a single 30 s window, returning the window text. */
+    /**
+     * Greedy decode of a single 30 s window, returning the window text.
+     *
+     * Whisper's positional table only has [WhisperTokenizer.MAX_CONTEXT] rows, so the
+     * prompt and the generated tokens together must stay below that: feeding position
+     * 448 makes the position slice empty and the ONNX graph fails with a reshape error.
+     * Timestamps are disabled (`<|notimestamps|>`) because timing comes from the VAD;
+     * otherwise the model happily emits timestamp tokens until the context is exhausted.
+     */
     fun transcribe(encoded: Encoded, languageToken: Int): String {
-        val prompt = OnnxTensor.createTensor(
-            env,
-            arrayOf(
-                longArrayOf(
-                    WhisperTokenizer.SOT.toLong(),
-                    languageToken.toLong(),
-                    WhisperTokenizer.TRANSCRIBE.toLong(),
-                )
-            ),
+        val promptIds = longArrayOf(
+            WhisperTokenizer.SOT.toLong(),
+            languageToken.toLong(),
+            WhisperTokenizer.TRANSCRIBE.toLong(),
+            WhisperTokenizer.NO_TIMESTAMPS.toLong(),
         )
+        val prompt = OnnxTensor.createTensor(env, arrayOf(promptIds))
         val hidden = OnnxTensor.createTensor(env, FloatBuffer.wrap(encoded.data), encoded.shape)
         val first = try {
             decoder.run(mapOf("input_ids" to prompt, "encoder_hidden_states" to hidden))
@@ -113,11 +118,11 @@ class WhisperEngine(
                 }
             }
 
-            var lastTs = 0
+            val maxNewTokens = (WhisperTokenizer.MAX_CONTEXT - promptIds.size).coerceAtLeast(1)
             var previous = -1
             var repeat = 0
-            for (step in 0 until MAX_TOKENS) {
-                val best = argmax(logits, step, lastTs)
+            for (step in 0 until maxNewTokens) {
+                val best = argmax(logits, step)
                 if (best == WhisperTokenizer.EOT) break
                 if (best == previous) {
                     repeat++
@@ -126,12 +131,7 @@ class WhisperEngine(
                     repeat = 0
                     previous = best
                 }
-
-                if (best >= WhisperTokenizer.TIMESTAMP_BASE) {
-                    lastTs = best - WhisperTokenizer.TIMESTAMP_BASE
-                } else {
-                    tokenizer.appendBytes(best, bytes)
-                }
+                tokenizer.appendBytes(best, bytes)
 
                 val ids = OnnxTensor.createTensor(env, arrayOf(longArrayOf(best.toLong())))
                 val feed = HashMap<String, OnnxTensor>(encoderKv.size + decoderKv.size + 1)
@@ -139,7 +139,12 @@ class WhisperEngine(
                 feed.putAll(encoderKv)
                 feed.putAll(decoderKv)
                 val result = try {
-                    decoderPast.run(feed)
+                    try {
+                        decoderPast.run(feed)
+                    } catch (e: ai.onnxruntime.OrtException) {
+                        // never lose the text decoded so far because one step failed
+                        break
+                    }
                 } finally {
                     ids.close()
                 }
@@ -201,16 +206,14 @@ class WhisperEngine(
         return all.copyOfRange(all.size - vocab, all.size)
     }
 
-    private fun argmax(scores: FloatArray, step: Int, lastTs: Int): Int {
+    private fun argmax(scores: FloatArray, step: Int): Int {
         var bestId = WhisperTokenizer.EOT
         var bestScore = -Float.MAX_VALUE
         for (id in scores.indices) {
             if (id < suppress.size && suppress[id]) continue
-            if (step == 0) {
-                if (id == 220) continue
-                if (id >= WhisperTokenizer.TIMESTAMP_BASE + 51) continue
-            }
-            if (id >= WhisperTokenizer.TIMESTAMP_BASE && id - WhisperTokenizer.TIMESTAMP_BASE < lastTs) continue
+            // timestamps are disabled for this app, they would only eat the context
+            if (id >= WhisperTokenizer.TIMESTAMP_BASE) continue
+            if (step == 0 && id == 220) continue
             val s = scores[id]
             if (s > bestScore) {
                 bestScore = s
@@ -233,9 +236,5 @@ class WhisperEngine(
         encoder.close()
         decoder.close()
         decoderPast.close()
-    }
-
-    companion object {
-        private const val MAX_TOKENS = 448
     }
 }

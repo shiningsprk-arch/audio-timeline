@@ -42,6 +42,9 @@ class WhisperTokenizer private constructor(
         const val TIMESTAMP_MAX = 51864
         const val VOCAB_SIZE = 51865
 
+        /** whisper's positional embedding table has exactly this many rows */
+        const val MAX_CONTEXT = 448
+
         val LANGUAGE_TOKENS = mapOf(
             "en" to 50259,
             "zh" to 50260,

@@ -219,7 +219,7 @@ object TextAligner {
             maxEnd[li] = max(maxEnd[li], rEnd[ri])
         }
         if (matched == 0) {
-            throw IllegalStateException("文本与音频内容不匹配，没有找到任何共同的文字")
+            throw IllegalStateException("文本与音频内容不匹配：请确认音频里的语言，并在上方把「音频语言」改成对应语言后重试")
         }
 
         val spans = arrayOfNulls<DoubleArray>(lines.size)

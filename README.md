@@ -45,7 +45,7 @@ GitHub Actions 已经配好（`.github/workflows/android.yml`），推送到 `ma
 | `dsp/MelFrontend` | 复刻 Whisper 的 log-mel：400 点 STFT、周期 Hann、80 维 slaney mel、`(x+4)/4` 归一化 |
 | `dsp/Fft` | radix-2 FFT + Bluestein 算法，精确计算 400 点 DFT（非 2 的幂） |
 | `dsp/Vad` | 能量 + 分位数自适应阈值的 VAD，用于切窗和排除停顿 |
-| `asr/WhisperEngine` | ONNX Runtime 会话管理，KV cache 增量解码，greedy + 时间戳约束 |
+| `asr/WhisperEngine` | ONNX Runtime 会话管理，KV cache 增量解码；禁用时间戳（`<|notimestamps|>`），token 预算按 448 上下文精确计算 |
 | `align/TextAligner` | 字符级 Needleman-Wunsch 对齐 + 语音时间映射 + 行首吸附 |
 
 ### 时间是怎么算出来的
@@ -84,7 +84,7 @@ java -jar check.jar app/src/main/assets <参考数据目录>
 
 - 模型较小，中文识别对专有名词、口音、背景音乐较敏感；识别错误只会影响对齐位置，不会改动用户原文
 - 说话速度变化很大（如朗读与快速对话混在一起）时，行内时间会有偏差
-- 单次对齐建议不超过 30 分钟的音频（DP 复杂度 O(文本字数 × 识别字数)）
+- 单次音频上限 20 分钟（解码后整段驻留内存，DP 复杂度 O(文本字数 × 识别字数)）
 - 纯音乐 / 无人声的音频无法对齐
 
 ## 依赖与许可
