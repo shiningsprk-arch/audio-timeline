@@ -17,8 +17,8 @@ android {
         applicationId = "com.shiningsprk.audiotimeline"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "2.0.0"
 
         ndk {
             // the bundled acoustic model is a 64 bit jniLib, so arm64 only
