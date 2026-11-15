@@ -13,3 +13,6 @@ local.properties
 *.keystore
 !debug.keystore
 tools/__pycache__
+
+# models are fetched by CI, never committed
+app/src/main/jniLibs/**/*.so

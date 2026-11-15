@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,7 +48,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.shiningsprk.audiotimeline.asr.Models
 import com.shiningsprk.audiotimeline.export.SubtitleWriter
 import kotlin.math.roundToInt
 
@@ -64,10 +60,7 @@ fun App(vm: AlignViewModel = viewModel()) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             vm.onAudioPicked(uri)
         }
@@ -93,7 +86,7 @@ fun App(vm: AlignViewModel = viewModel()) {
                     Column {
                         Text("音频时间轴", fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (result == null) "本地音频 · 文本对齐 · 离线运行" else "对齐结果",
+                            if (result == null) "歌词 / 台词 · 中文 · 离线运行" else "对齐结果",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -111,9 +104,6 @@ fun App(vm: AlignViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
                 onPickAudio = { picker.launch(arrayOf("audio/*")) },
                 onTextChange = vm::onTextChanged,
-                onModelSelect = vm::onModelSelected,
-                onLanguageSelect = vm::onLanguageSelected,
-                onDownload = vm::downloadModel,
                 onRun = vm::run,
                 onDismissError = vm::clearError,
             )
@@ -150,9 +140,6 @@ private fun SetupScreen(
     modifier: Modifier = Modifier,
     onPickAudio: () -> Unit,
     onTextChange: (String) -> Unit,
-    onModelSelect: (String) -> Unit,
-    onLanguageSelect: (String) -> Unit,
-    onDownload: () -> Unit,
     onRun: () -> Unit,
     onDismissError: () -> Unit,
 ) {
@@ -164,12 +151,12 @@ private fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
-            "把文稿对准音频",
+            "把歌词对准音频",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "选一段本地音频，粘贴它的文稿或歌词，应用会在本机识别语音并算出每一行的时间码。",
+            "选一段本地音频，粘贴歌词或台词，应用会在本机算出每一行的时间码。全程离线。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -197,7 +184,8 @@ private fun SetupScreen(
                         maxLines = 1,
                     )
                     Text(
-                        if (state.audioDurationMs > 0) formatDuration(state.audioDurationMs) else "支持 mp3 / m4a / wav / flac 等",
+                        if (state.audioDurationMs > 0) formatDuration(state.audioDurationMs)
+                        else "支持 mp3 / m4a / wav / flac 等",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -210,99 +198,27 @@ private fun SetupScreen(
 
         SectionCard {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("文稿", style = MaterialTheme.typography.titleSmall)
+                Text("歌词", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(
                     value = state.text,
                     onValueChange = onTextChange,
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 7,
-                    maxLines = 12,
+                    minLines = 8,
+                    maxLines = 14,
                     placeholder = {
-                        Text("每行一句，用换行分隔\n例如：\n第一句，我们在这条时间轴上开始。\n第二句，风吹过城市的屋顶。")
+                        Text("每行一句，用换行分隔\n例如：\n主人 为何 你要遵循谬论 向她俯首称臣\n主人 为何 你要吞下悔恨 领受她的委任")
                     },
                     textStyle = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    "共 ${state.text.lines().count { it.isNotBlank() }} 行 · 建议一句一行",
+                    "共 ${state.text.lines().count { it.isNotBlank() }} 行 · 目前只支持中文（含繁简混排）",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
-        SectionCard {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("识别模型", style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (spec in Models.all) {
-                        SelectablePill(
-                            label = "${spec.label} · ${(spec.totalBytes / 1024 / 1024)}MB",
-                            selected = state.modelId == spec.id,
-                            onClick = { onModelSelect(spec.id) },
-                        )
-                    }
-                }
-                Text(
-                    Models.byId(state.modelId).note,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (state.modelReady) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Rounded.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "模型已就绪，可离线使用",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                } else if (state.downloading) {
-                    LinearProgressIndicator(
-                        progress = { state.downloadProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        "${(state.downloadProgress * 100).roundToInt()}% · ${state.downloadLabel}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "首次使用需要下载模型（只下一次）",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = onDownload) {
-                            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("下载")
-                        }
-                    }
-                }
-            }
-        }
-
-        SectionCard {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("音频语言", style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectablePill("自动检测", state.language == "auto") { onLanguageSelect("auto") }
-                    SelectablePill("中文", state.language == "zh") { onLanguageSelect("zh") }
-                    SelectablePill("English", state.language == "en") { onLanguageSelect("en") }
-                    SelectablePill("日本語", state.language == "ja") { onLanguageSelect("ja") }
-                }
-            }
-        }
-
-        if (state.running || (state.stage.isNotEmpty() && state.result == null)) {
+        if (state.running || state.stage.isNotEmpty()) {
             SectionCard {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -310,9 +226,11 @@ private fun SetupScreen(
                         Spacer(Modifier.width(10.dp))
                         Text(state.stage.ifBlank { "处理中" }, style = MaterialTheme.typography.bodySmall)
                     }
-                    LinearProgressIndicator(
-                        progress = { state.progress },
-                        modifier = Modifier.fillMaxWidth(),
+                    LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "${(state.progress * 100).roundToInt()}% · 分离比较慢，请保持前台",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -321,8 +239,16 @@ private fun SetupScreen(
         state.error?.let { message ->
             SectionCard(background = MaterialTheme.colorScheme.errorContainer) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("出错了", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(
+                        "出错了",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
                     TextButton(onClick = onDismissError) { Text("知道了") }
                 }
             }
@@ -339,7 +265,7 @@ private fun SetupScreen(
             Text(if (state.running) "处理中…" else "开始对齐", style = MaterialTheme.typography.titleMedium)
         }
         Text(
-            "全部计算都在手机上完成，音频和文本不会上传。",
+            "全部计算都在手机上完成，音频和歌词不会上传。",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 20.dp),
@@ -360,29 +286,6 @@ fun SectionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Box(Modifier.padding(16.dp)) { content() }
-    }
-}
-
-@Composable
-fun SelectablePill(label: String, selected: Boolean, onClick: () -> Unit) {
-    val background = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-    val foreground = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(background)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Text(label, color = foreground, fontSize = 13.sp)
     }
 }
 

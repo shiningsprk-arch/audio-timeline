@@ -108,7 +108,7 @@ fun ResultScreen(
                     maxLines = 1,
                 )
                 Text(
-                    "${result.lines.size} 行 · 匹配度 ${(result.matchRate * 100).roundToInt()}% · 用时 ${String.format(java.util.Locale.US, "%.1f", state.elapsedSec)}s",
+                    "${result.lines.size} 行 · 词表覆盖 ${(result.coverage * 100).roundToInt()}% · 用时 ${String.format(java.util.Locale.US, "%.1f", state.elapsedSec)}s",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

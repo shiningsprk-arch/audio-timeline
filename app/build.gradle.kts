@@ -16,17 +16,12 @@ android {
         versionName = "1.0.0"
 
         ndk {
-            // onnxruntime ships arm64 + armv7; keep the APK lean
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            // the bundled acoustic model is a 64 bit jniLib, so arm64 only
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
     buildTypes {
-        debug {
-            ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-            }
-        }
         release {
             isMinifyEnabled = false
             // signed with the CI debug keystore so the artifact installs directly
@@ -50,6 +45,14 @@ android {
     }
 
     packaging {
+        // keep the models compressible and let Android extract them on install,
+        // so ONNX Runtime can mmap them straight from nativeLibraryDir
+        jniLibs {
+            useLegacyPackaging = true
+            // the model is a plain ONNX file named .so so Android extracts it for us;
+            // it is not an ELF, so keep the packager from trying to strip it
+            keepDebugSymbols += "*.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

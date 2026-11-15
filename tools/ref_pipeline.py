@@ -181,8 +181,9 @@ class Model:
         return int(np.argmax(out[0][0, -1, 50259:50358])) + 50259
 
     def transcribe(self, hidden, lang_token):
-        """Greedy decode; timestamp tokens are dropped because timing comes from VAD."""
-        outs = self.dec.run(None, {"input_ids": np.array([[SOT, lang_token, TRANSCRIBE]], dtype=np.int64),
+        """Greedy decode without timestamps (same as the Kotlin engine)."""
+        prompt = [SOT, lang_token, TRANSCRIBE, NO_TS]
+        outs = self.dec.run(None, {"input_ids": np.array([prompt], dtype=np.int64),
                                    "encoder_hidden_states": hidden})
         logits = outs[0]
         enc_past = {o.name.replace("present.", "past_key_values."): v
@@ -192,22 +193,21 @@ class Model:
         out_names = [o.name.replace("present.", "past_key_values.") for o in self.decp.get_outputs()[1:]]
 
         byte_buf = bytearray()
-        last_ts = 0
-        for step in range(MAX_TOKENS):
+        max_new = max(1, 448 - len(prompt))
+        for step in range(max_new):
             scores = logits[0, -1].astype(np.float64).copy()
             scores[self.suppress] = -1e9
+            scores[TS_BASE:] = -1e9
             if step == 0:
                 scores[220] = -1e9
-                scores[TS_BASE + 51:] = -1e9
-            scores[TS_BASE:TS_BASE + last_ts] = -1e9
             nxt = int(np.argmax(scores))
             if nxt == EOT:
                 break
-            if nxt >= TS_BASE:
-                last_ts = nxt - TS_BASE
-            else:
-                byte_buf += self.id2bytes.get(nxt, b"")
-            outs = self.decp.run(None, {"input_ids": np.array([[nxt]], dtype=np.int64), **dec_past, **enc_past})
+            byte_buf += self.id2bytes.get(nxt, b"")
+            try:
+                outs = self.decp.run(None, {"input_ids": np.array([[nxt]], dtype=np.int64), **dec_past, **enc_past})
+            except Exception:
+                break
             logits = outs[0]
             dec_past = {n: v for n, v in zip(out_names, outs[1:])}
         return byte_buf.decode("utf-8", "replace")
