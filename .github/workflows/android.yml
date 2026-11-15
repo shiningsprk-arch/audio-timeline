@@ -42,21 +42,19 @@ jobs:
           ls -lh app/src/main/jniLibs/arm64-v8a/
           test $(stat -c%s "$target") -gt 500000000
 
-      - name: Build debug and release APK
+      - name: Build release APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+          ./gradlew --no-daemon --stacktrace assembleRelease
 
-      - name: Show APK sizes
-        run: ls -lh app/build/outputs/apk/*/*.apk
+      - name: Show APK size
+        run: ls -lh app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload APKs
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: audio-timeline-apk
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release.apk
+          name: app-release
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
       - name: Attach APK to GitHub Release
