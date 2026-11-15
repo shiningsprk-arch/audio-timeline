@@ -18,6 +18,11 @@ class LyricPipeline(
     private val threads: Int = 4,
 ) {
 
+    companion object {
+        /** posteriors for 10 minutes are ~210 MB, beyond that phones start to struggle */
+        const val MAX_SECONDS = 600.0
+    }
+
     data class Output(val result: AlignResult, val durationSec: Double, val separated: Boolean)
 
     fun run(
@@ -48,6 +53,9 @@ class LyricPipeline(
             val decoded = AudioDecoder.decode(context, uri)
             vocals = decoded.samples
             duration = decoded.durationSec
+        }
+        require(duration <= MAX_SECONDS) {
+            "音频约 ${(duration / 60).toInt()} 分钟，超过当前版本支持的 ${(MAX_SECONDS / 60).toInt()} 分钟，请先裁剪"
         }
         onProgress(0.4f)
 
