@@ -6,6 +6,10 @@ plugins {
 
 // a stable release key keeps the APK signature identical across builds, otherwise every
 // CI run generates a fresh debug keystore and updates cannot be installed over the old app
+// the git tag is the single source of truth for the version; CI passes it in
+val appVersionName = System.getenv("APP_VERSION_NAME") ?: "2.0.2"
+val appVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 20002
+
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val hasReleaseKeystore = !releaseKeystorePath.isNullOrBlank() && file(releaseKeystorePath).isFile
 
@@ -17,8 +21,8 @@ android {
         applicationId = "com.shiningsprk.audiotimeline"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         ndk {
             // the bundled acoustic model is a 64 bit jniLib, so arm64 only

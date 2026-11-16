@@ -42,6 +42,20 @@ jobs:
           ls -lh app/src/main/jniLibs/arm64-v8a/
           test $(stat -c%s "$target") -gt 500000000
 
+      - name: Resolve version from tag
+        run: |
+          ref="${GITHUB_REF_NAME}"
+          if [[ "$ref" == v* ]]; then
+            name="${ref#v}"
+            code=$(echo "$name" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')
+          else
+            name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            code="${GITHUB_RUN_NUMBER}"
+          fi
+          echo "APP_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "building $name ($code)"
+
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -67,6 +81,8 @@ jobs:
         run: |
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
           "$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | head -4
+          aapt2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -1)
+          "$aapt2" dump badging app/build/outputs/apk/release/app-release.apk | head -1
 
       - name: Show APK size
         run: ls -lh app/build/outputs/apk/release/app-release.apk
