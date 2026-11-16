@@ -48,7 +48,6 @@ class CtcEngine(
         var startSample = 0
         val chunkSamples = (CHUNK_SEC * SAMPLE_RATE).toInt()
         val strideSamples = (STRIDE_SEC * SAMPLE_RATE).toInt()
-        val marginSamples = (MARGIN_SEC * SAMPLE_RATE).toInt()
 
         while (startSample < totalSamples) {
             val end = minOf(totalSamples, startSample + chunkSamples)
@@ -71,10 +70,9 @@ class CtcEngine(
             val logits = runChunk(chunk)
             val frames = logits.size / vocabSize
             val fps = frames.toDouble() / (length.toDouble() / SAMPLE_RATE)
-            val skip = if (startSample == 0) 0 else Math.round(MARGIN_SEC * fps).toInt()
-            val quote = (startSample == 0) // first chunk keeps everything
+            val first = startSample == 0
+            val keepFrom = if (first) 0 else minOf(Math.round(MARGIN_SEC * fps).toInt(), frames)
 
-            val keepFrom = if (quote) 0 else minOf(skip, frames)
             val keepFrames = frames - keepFrom
             if (keepFrames > 0) {
                 pieces.add(quantise(logits, keepFrom, keepFrames, vocabSize))
@@ -83,7 +81,12 @@ class CtcEngine(
             onProgress(minOf(1f, end.toFloat() / totalSamples))
             if (end >= totalSamples) break
             startSample += strideSamples
-            if (end - startSample <= marginSamples) break
+        }
+
+        // guard against a silently truncated run: the model outputs 50 frames per second
+        val expectedFrames = totalSamples / 320.0
+        require(kotlin.math.abs(totalFrames - expectedFrames) <= expectedFrames * 0.05) {
+            "声学模型只处理了 $totalFrames 帧（应为 ${expectedFrames.toInt()}），请重试或换一个音频"
         }
 
         val data = ShortArray(totalFrames * vocabSize)
