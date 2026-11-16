@@ -9,6 +9,8 @@ import com.shiningsprk.audiotimeline.audio.AudioDecoder
 import com.shiningsprk.audiotimeline.ctc.CtcAssets
 import com.shiningsprk.audiotimeline.ctc.LyricPipeline
 import com.shiningsprk.audiotimeline.ctc.LyricText
+import com.shiningsprk.audiotimeline.history.HistoryRecord
+import com.shiningsprk.audiotimeline.history.HistoryStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,17 @@ class AlignViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(AlignUiState())
     val state: StateFlow<AlignUiState> = _state.asStateFlow()
 
+    private val store = HistoryStore(application)
+    private val _history = MutableStateFlow<List<HistoryRecord>>(emptyList())
+    val history: StateFlow<List<HistoryRecord>> = _history.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val loaded = withContext(Dispatchers.IO) { store.load() }
+            _history.value = loaded.sortedByDescending { it.createdAt }
+        }
+    }
+
     fun onAudioPicked(uri: Uri) {
         val context = getApplication<Application>()
         _state.update { it.copy(audioUri = uri, result = null, error = null) }
@@ -66,6 +79,36 @@ class AlignViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetResult() {
         _state.update { it.copy(result = null, progress = 0f, stage = "") }
+    }
+
+    fun openRecord(record: HistoryRecord) {
+        // while a run is in flight the pipeline keeps writing progress; switching to an old
+        // result here would make the screen flip back and forth
+        if (_state.value.running) return
+        _state.update {
+            it.copy(
+                audioUri = record.audioUri?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() },
+                audioName = record.audioName,
+                audioDurationSec = record.durationSec,
+                audioDurationMs = (record.durationSec * 1000).toLong(),
+                result = AlignResult(record.lines, record.matchedChars, record.totalChars),
+                progress = 1f,
+                stage = "完成",
+                elapsedSec = record.elapsedSec,
+                error = null,
+            )
+        }
+    }
+
+    fun deleteRecord(id: Long) {
+        val next = _history.value.filterNot { it.id == id }
+        _history.value = next
+        viewModelScope.launch { withContext(Dispatchers.IO) { store.save(next) } }
+    }
+
+    fun clearHistory() {
+        _history.value = emptyList()
+        viewModelScope.launch { withContext(Dispatchers.IO) { store.save(emptyList()) } }
     }
 
     fun run() {
@@ -96,6 +139,22 @@ class AlignViewModel(application: Application) : AndroidViewModel(application) {
                         onProgress = { p -> _state.update { it.copy(progress = p) } },
                     )
                 }
+                val finishedAt = System.currentTimeMillis()
+                val record = HistoryRecord(
+                    id = finishedAt,
+                    audioName = current.audioName.ifBlank { "未命名音频" },
+                    audioUri = current.audioUri?.toString(),
+                    durationSec = output.durationSec,
+                    createdAt = finishedAt,
+                    lines = output.result.lines,
+                    matchedChars = output.result.matchedChars,
+                    totalChars = output.result.totalChars,
+                    elapsedSec = (finishedAt - started) / 1000.0,
+                )
+                val nextHistory = (listOf(record) + _history.value).take(HistoryStore.MAX_RECORDS)
+                _history.value = nextHistory
+                withContext(Dispatchers.IO) { store.save(nextHistory) }
+
                 _state.update {
                     it.copy(
                         running = false,
