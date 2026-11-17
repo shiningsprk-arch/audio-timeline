@@ -86,4 +86,4 @@ java -jar check.jar <参考数据目录>
 - 声学模型：`jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn`（Apache-2.0），ONNX 导出由 [onnx-community](https://huggingface.co/onnx-community) 提供
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime)（MIT）
 - 繁简映射表来自 [OpenCC](https://github.com/BYVoid/OpenCC)（Apache-2.0）
-- 本项目代码：MIT
+- 本项目代码：AGPL-3.0
